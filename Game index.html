@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tangkap Buah — Game Sederhana</title>
+  <style>
+    :root {
+      --bg: #eaf7ff;
+      --panel: #ffffff;
+      --accent: #ff7a7a;
+      --text: #203040;
+    }
+    html,body{
+      height:100%;
+      margin:0;
+      font-family: "Segoe UI", Roboto, Arial, sans-serif;
+      background: linear-gradient(180deg, var(--bg) 0%, #dff3ff 100%);
+      color:var(--text);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .game-wrap{
+      width: 360px;
+      max-width: 95vw;
+      background:var(--panel);
+      border-radius:16px;
+      box-shadow: 0 8px 24px rgba(16,32,48,0.12);
+      padding:12px;
+      overflow:visible;
+    }
+    header{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:8px;
+    }
+    .title{
+      font-weight:700;
+      font-size:18px;
+    }
+    .hud{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      font-size:14px;
+    }
+    #board{
+      position:relative;
+      width:100%;
+      height:480px;
+      background: linear-gradient(#c6f3ff, #a8e9ff);
+      border-radius:10px;
+      overflow:hidden;
+      touch-action: none; /* for pointer events */
+    }
+    .ground{
+      position:absolute;
+      bottom:0;
+      left:0;
+      right:0;
+      height:64px;
+      background: linear-gradient(90deg,#ffd7d7,#fff1d7);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      box-shadow: inset 0 4px 10px rgba(0,0,0,0.06);
+    }
+    .basket{
+      position:absolute;
+      bottom:64px;
+      width:80px;
+      height:48px;
+      border-radius:10px;
+      background: linear-gradient(180deg,#8c5a2a,#5a3416);
+      transform:translateX(-50%);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:#fff;
+      font-weight:700;
+      user-select:none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .fruit{
+      position:absolute;
+      width:36px;
+      height:36px;
+      border-radius:50%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:18px;
+      color:white;
+      font-weight:700;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    /* fruit colors */
+    .apple{ background: #ff4d4d; }
+    .orange{ background: #ff9a3c; }
+    .lime{ background: #8ad34a; }
+    .bad{ background: #666666; } /* bomb/rotten */
+    /* controls for mobile */
+    .controls{
+      display:flex;
+      gap:8px;
+      margin-top:8px;
+      justify-content:center;
+    }
+    .btn{
+      padding:10px 14px;
+      border-radius:8px;
+      background:var(--accent);
+      color:white;
+      font-weight:700;
+      border:none;
+      box-shadow: 0 6px 12px rgba(255,122,122,0.28);
+      user-select:none;
+    }
+    .small{
+      font-size:13px;
+      padding:6px 8px;
+      border-radius:6px;
+      box-shadow:none;
+    }
+    .center-msg{
+      position:absolute;
+      left:50%;
+      top:50%;
+      transform:translate(-50%,-50%);
+      background:rgba(255,255,255,0.9);
+      padding:18px;
+      border-radius:12px;
+      text-align:center;
+      box-shadow:0 10px 30px rgba(0,0,0,0.15);
+    }
+  </style>
+</head>
+<body>
+  <div class="game-wrap">
+    <header>
+      <div class="title">Tangkap Buah</div>
+      <div class="hud">
+        <div id="score">Skor: 0</div>
+        <div id="lives">Nyawa: 3</div>
+      </div>
+    </header>
+
+    <div id="board" aria-label="Area permainan">
+      <div class="ground"></div>
+      <div id="basket" class="basket" style="left:50%;">🧺</div>
+
+      <!-- overlay messages -->
+      <div id="overlay" class="center-msg" style="display:none;">
+        <div id="overlay-text">Siap bermain?</div>
+        <div style="margin-top:10px;">
+          <button id="startBtn" class="btn small">Mulai</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls" aria-hidden="false" style="margin-top:10px;">
+      <button id="leftBtn" class="btn small">◀</button>
+      <button id="rightBtn" class="btn small">▶</button>
+      <button id="pauseBtn" class="btn small" style="background:#7f8aff;">Jeda</button>
+      <button id="resetBtn" class="btn small" style="background:#55c89f;">Ulang</button>
+    </div>
+  </div>
+
+  <script>
+    // --- game settings ---
+    const board = document.getElementById('board');
+    const basketEl = document.getElementById('basket');
+    const scoreEl = document.getElementById('score');
+    const livesEl = document.getElementById('lives');
+    const overlay = document.getElementById('overlay');
+    const overlayText = document.getElementById('overlay-text');
+    const startBtn = document.getElementById('startBtn');
+    const leftBtn = document.getElementById('leftBtn');
+    const rightBtn = document.getElementById('rightBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    const BOARD_W = () => board.clientWidth;
+    const BOARD_H = () => board.clientHeight;
+    const GROUND_H = 64;
+
+    let state = {
+      running: false,
+      paused: false,
+      score: 0,
+      lives: 3,
+      basketX: BOARD_W() / 2,
+      basketSpeed: 6, // px per frame when using buttons
+      fruits: [],
+      spawnInterval: 1200, // ms initial
+      lastSpawn: 0,
+      lastTime: 0,
+      level: 1
+    };
+
+    // fruit types: emoji, className, points, speedModifier, good/bad
+    const FRUIT_TYPES = [
+      {emoji:'🍎', cls:'apple', points:10, speed:1, good:true},
+      {emoji:'🍊', cls:'orange', points:8, speed:1.1, good:true},
+      {emoji:'🍋', cls:'lime', points:6, speed:1.3, good:true},
+      {emoji:'💣', cls:'bad', points:-1, speed:1.2, good:false}
+    ];
+
+    // helpers
+    function setScore(v){ state.score = v; scoreEl.textContent = 'Skor: ' + state.score; }
+    function setLives(v){ state.lives = v; livesEl.textContent = 'Nyawa: ' + state.lives; }
+
+    // spawn a fruit DOM and push to state.fruits
+    function spawnFruit() {
+      const t = FRUIT_TYPES[Math.floor(Math.random() * FRUIT_TYPES.length)];
+      const el = document.createElement('div');
+      el.className = 'fruit ' + t.cls;
+      el.textContent = t.emoji;
+      const x = Math.random() * (BOARD_W() - 40) + 20;
+      const y = -40;
+      board.appendChild(el);
+      state.fruits.push({
+        el, x, y,
+        vy: 1.0 * t.speed * (1 + (state.level - 1) * 0.12),
+        type: t
+      });
+    }
+
+    // remove fruit (DOM + state)
+    function removeFruit(index, caught=false) {
+      const f = state.fruits[index];
+      if (!f) return;
+      board.removeChild(f.el);
+      state.fruits.splice(index,1);
+      // if not caught and not good -> no penalty; if not caught and good -> lose life
+      if (!caught && f.type.good) {
+        setLives(state.lives - 1);
+        if (state.lives <= 0) gameOver();
+      }
+    }
+
+    function gameOver() {
+      state.running = false;
+      overlayText.innerHTML = `<strong>Game Over</strong><br>Skor akhir: ${state.score}`;
+      startBtn.textContent = 'Main Lagi';
+      overlay.style.display = 'block';
+    }
+
+    // update physics each frame
+    function updateFrame(ts) {
+      if (!state.running || state.paused) {
+        state.lastTime = ts;
+        requestAnimationFrame(updateFrame);
+        return;
+      }
+      if (!state.lastTime) state.lastTime = ts;
+      const dt = ts - state.lastTime;
+      state.lastTime = ts;
+
+      // spawn fruits according to interval (slower interval as level increases)
+      if (ts - state.lastSpawn > Math.max(400, state.spawnInterval - (state.level-1)*80)) {
+        spawnFruit();
+        state.lastSpawn = ts;
+      }
+
+      // update fruits positions
+      for (let i = state.fruits.length - 1; i >= 0; i--) {
+        const f = state.fruits[i];
+        f.vy += 0.02 * (state.level); // slight gravity increase by level
+        f.y += f.vy * (dt / 16); // normalize per ~60fps
+        f.el.style.transform = `translate(${f.x}px, ${f.y}px)`;
+
+        // collision with basket?
+        const basketRect = {
+          x: state.basketX - 40,
+          y: BOARD_H() - GROUND_H - 48,
+          w: 80,
+          h: 48
+        };
+        const fx = f.x;
+        const fy = f.y;
+        // simple collision check (point in rect)
+        if (fy + 18 >= basketRect.y && fy <= basketRect.y + basketRect.h &&
+            fx >= basketRect.x && fx <= basketRect.x + basketRect.w) {
+          // caught
+          if (f.type.good) {
+            setScore(state.score + f.type.points);
+          } else {
+            // bomb/bad: lose 1 life
+            setLives(state.lives - 1);
+            if (state.lives <= 0) {
+              // immediate removal handled in removeFruit
+            }
+          }
+          removeFruit(i, true);
+          continue;
+        }
+
+        // if goes below board (missed)
+        if (f.y > BOARD_H()) {
+          removeFruit(i, false);
+        }
+      }
+
+      // update basket DOM
+      basketEl.style.left = state.basketX + 'px';
+
+      // level up check
+      const nextLevelScore = state.level * 100;
+      if (state.score >= nextLevelScore) {
+        state.level++;
+        // make game slightly harder
+        state.spawnInterval = Math.max(500, state.spawnInterval - 100);
+        // show small level-up cue
+        flashMessage(`Level ${state.level}!`);
+      }
+
+      requestAnimationFrame(updateFrame);
+    }
+
+    // small temporary message in center
+    function flashMessage(msg, time=900) {
+      overlayText.innerHTML = `<strong>${msg}</strong>`;
+      overlay.style.display = 'block';
+      setTimeout(()=>{ if(state.running) overlay.style.display = 'none'; }, time);
+    }
+
+    // start/reset functions
+    function startGame() {
+      // clear existing fruits
+      while(state.fruits.length) removeFruit(0);
+      setScore(0);
+      setLives(3);
+      state.level = 1;
+      state.spawnInterval = 1200;
+      state.basketX = BOARD_W() / 2;
+      basketEl.style.left = state.basketX + 'px';
+      overlay.style.display = 'none';
+      state.running = true;
+      state.paused = false;
+      state.lastSpawn = 0;
+      state.lastTime = performance.now();
+      requestAnimationFrame(updateFrame);
+    }
+
+    // pause toggle
+    function togglePause() {
+      if (!state.running) return;
+      state.paused = !state.paused;
+      pauseBtn.textContent = state.paused ? 'Lanjut' : 'Jeda';
+      if (!state.paused) {
+        // resume loop with fresh timestamp
+        state.lastTime = performance.now();
+      }
+    }
+
+    // movement handling (keyboard & buttons & pointer)
+    let moveLeft = false, moveRight = false;
+    function gameLoopMove() {
+      if (moveLeft) state.basketX -= state.basketSpeed;
+      if (moveRight) state.basketX += state.basketSpeed;
+      // constrain
+      state.basketX = Math.max(40, Math.min(BOARD_W() - 40, state.basketX));
+      // update DOM
+      basketEl.style.left = state.basketX + 'px';
+      requestAnimationFrame(gameLoopMove);
+    }
+
+    // keyboard
+    window.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft' || e.key === 'a') moveLeft = true;
+      if (e.key === 'ArrowRight' || e.key === 'd') moveRight = true;
+      if (e.key === ' ' || e.key === 'Spacebar') togglePause();
+    });
+    window.addEventListener('keyup', e => {
+      if (e.key === 'ArrowLeft' || e.key === 'a') moveLeft = false;
+      if (e.key === 'ArrowRight' || e.key === 'd') moveRight = false;
+    });
+
+    // buttons
+    leftBtn.addEventListener('pointerdown', ()=> moveLeft = true);
+    leftBtn.addEventListener('pointerup', ()=> moveLeft = false);
+    leftBtn.addEventListener('pointerleave', ()=> moveLeft = false);
+    rightBtn.addEventListener('pointerdown', ()=> moveRight = true);
+    rightBtn.addEventListener('pointerup', ()=> moveRight = false);
+    rightBtn.addEventListener('pointerleave', ()=> moveRight = false);
+
+    pauseBtn.addEventListener('click', togglePause);
+    resetBtn.addEventListener('click', ()=> { overlayText.innerHTML = 'Siap mulai ulang?'; startBtn.textContent = 'Mulai'; overlay.style.display = 'block'; state.running = false; });
+
+    // start / overlay button
+    startBtn.addEventListener('click', startGame);
+
+    // pointer drag for basket (touch-friendly)
+    let dragging = false;
+    board.addEventListener('pointerdown', (e)=>{
+      dragging = true;
+      board.setPointerCapture(e.pointerId);
+      updateBasketFromPointer(e);
+    });
+    board.addEventListener('pointermove', (e)=>{
+      if (!dragging) return;
+      updateBasketFromPointer(e);
+    });
+    board.addEventListener('pointerup', (e)=>{
+      dragging = false;
+      try { board.releasePointerCapture(e.pointerId); } catch(_) {}
+    });
+    function updateBasketFromPointer(e){
+      const rect = board.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      state.basketX = Math.max(40, Math.min(BOARD_W() - 40, x));
+      basketEl.style.left = state.basketX + 'px';
+    }
+
+    // responsive: handle resize to keep basket in bounds
+    window.addEventListener('resize', ()=>{
+      state.basketX = Math.max(40, Math.min(BOARD_W() - 40, state.basketX));
+      basketEl.style.left = state.basketX + 'px';
+    });
+
+    // initial overlay show
+    overlay.style.display = 'block';
+    overlayText.innerHTML = `<strong>Selamat datang!</strong><br>Tangkap buah yang jatuh. Hindari bomb (💣).`;
+    startBtn.textContent = 'Mulai';
+
+    // start movement loop
+    requestAnimationFrame(gameLoopMove);
+  </script>
+</body>
+</html>
